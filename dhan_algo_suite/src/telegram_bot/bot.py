@@ -1,109 +1,80 @@
+# dhan_algo_suite/bot.py
+
 import os
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from dotenv import load_dotenv
+import asyncio
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.error import Conflict
 
-# Load environment variables
-load_dotenv()
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+# ===== Main Menu Keyboard =====
+main_menu_keyboard = [
+    ["📊 Balance", "📂 Positions"],
+    ["📜 Orders", "🏓 Ping"],
+    ["🛒 Buy", "💰 Sell"]
+]
+main_menu_markup = ReplyKeyboardMarkup(main_menu_keyboard, resize_keyboard=True)
 
-# =============================
-# COMMAND HANDLERS
-# =============================
-
+# ===== Command Handlers =====
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🚀 Dhan Algo Bot is live and running!\n\n"
-        "Available commands:\n"
-        "/balance - Check account balance\n"
-        "/positions - View open positions\n"
-        "/orders - View recent orders\n"
-        "/buy <symbol> <qty> - Place a buy order\n"
-        "/sell <symbol> <qty> - Place a sell order\n"
-        "/help - Show this help menu"
+        "🚀 Dhan Algo Bot is live!\nChoose an option:",
+        reply_markup=main_menu_markup
     )
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "ℹ️ Available commands:\n"
-        "/balance - Check account balance\n"
-        "/positions - View open positions\n"
-        "/orders - View recent orders\n"
-        "/buy <symbol> <qty> - Place a buy order\n"
-        "/sell <symbol> <qty> - Place a sell order"
-    )
+async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("pong 🏓")
 
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # TODO: Replace this with actual Dhan API call
-    balance = 100000.00  # Dummy value
-    await update.message.reply_text(f"💰 Account Balance: ₹{balance:,.2f}")
+    await update.message.reply_text("Balance: ₹100,000 (dummy data)")
 
 async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # TODO: Replace with real positions from Dhan API
-    positions = [
-        {"symbol": "RELIANCE", "qty": 10, "avg_price": 2500},
-        {"symbol": "INFY", "qty": 5, "avg_price": 1500}
-    ]
-    if positions:
-        text = "📊 Open Positions:\n" + "\n".join(
-            [f"{p['symbol']} - {p['qty']} @ ₹{p['avg_price']}" for p in positions]
-        )
-    else:
-        text = "📊 No open positions."
-    await update.message.reply_text(text)
+    await update.message.reply_text("Positions: None (dummy)")
 
 async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # TODO: Replace with real orders from Dhan API
-    orders = [
-        {"symbol": "TCS", "side": "BUY", "qty": 2, "status": "COMPLETED"},
-        {"symbol": "HDFC", "side": "SELL", "qty": 1, "status": "PENDING"}
-    ]
-    if orders:
-        text = "📜 Recent Orders:\n" + "\n".join(
-            [f"{o['side']} {o['symbol']} x{o['qty']} - {o['status']}" for o in orders]
-        )
-    else:
-        text = "📜 No recent orders."
-    await update.message.reply_text(text)
+    await update.message.reply_text("Orders: None (dummy)")
 
 async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2:
-        await update.message.reply_text("Usage: /buy <symbol> <qty>")
-        return
-    symbol = context.args[0].upper()
-    qty = int(context.args[1])
-    # TODO: Place buy order via Dhan API
-    await update.message.reply_text(f"✅ Buy order placed: {symbol} x{qty}")
+    await update.message.reply_text("Send the symbol and quantity to buy (dummy flow)")
 
 async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2:
-        await update.message.reply_text("Usage: /sell <symbol> <qty>")
-        return
-    symbol = context.args[0].upper()
-    qty = int(context.args[1])
-    # TODO: Place sell order via Dhan API
-    await update.message.reply_text(f"✅ Sell order placed: {symbol} x{qty}")
+    await update.message.reply_text("Send the symbol and quantity to sell (dummy flow)")
 
-# =============================
-# MAIN APPLICATION
-# =============================
+# ===== Text Button Handler =====
+async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+    if text == "📊 Balance":
+        await balance_command(update, context)
+    elif text == "📂 Positions":
+        await positions_command(update, context)
+    elif text == "📜 Orders":
+        await orders_command(update, context)
+    elif text == "🏓 Ping":
+        await ping_command(update, context)
+    elif text == "🛒 Buy":
+        await buy_command(update, context)
+    elif text == "💰 Sell":
+        await sell_command(update, context)
+    else:
+        await update.message.reply_text("Please choose from the menu.")
 
-def run_bot():
-    if not TELEGRAM_TOKEN:
-        raise ValueError("❌ TELEGRAM_TOKEN not found in environment variables.")
+# ===== Bot Runner =====
+async def run_bot():
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        raise ValueError("TELEGRAM_BOT_TOKEN not set in env variables")
 
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app = ApplicationBuilder().token(token).build()
 
+    # Start command
     app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("balance", balance_command))
-    app.add_handler(CommandHandler("positions", positions_command))
-    app.add_handler(CommandHandler("orders", orders_command))
-    app.add_handler(CommandHandler("buy", buy_command))
-    app.add_handler(CommandHandler("sell", sell_command))
+    # Text-based menu handler
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu))
 
-    print("✅ Telegram bot polling started")
-    app.run_polling()
+    try:
+        print("Starting Telegram bot polling...")
+        await app.run_polling()
+    except Conflict:
+        print("Conflict: Another instance is running. Stopping this one.")
 
 if __name__ == "__main__":
-    run_bot()
+    asyncio.run(run_bot())
