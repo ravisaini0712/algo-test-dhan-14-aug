@@ -1,73 +1,109 @@
-import asyncio, json, os
-from datetime import datetime
-from loguru import logger
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
-from ..config import settings
+import os
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from dotenv import load_dotenv
 
-HELP = (
-"""Commands:
-/start - show menu
-/status - show mode, SL hits, position
-/backtest <months> - run backtest for last N months
-/paper - start paper trading
-/live - start live trading
-/stop - stop any running mode
-/positions - show open positions
-/pnl - show today's P&L
-/logs - last errors
-/help - this help
-"""
-)
+# Load environment variables
+load_dotenv()
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-running_task = None
+# =============================
+# COMMAND HANDLERS
+# =============================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kb = [
-        [InlineKeyboardButton("Run Backtest 1m", callback_data="bt:1"),
-         InlineKeyboardButton("Run Backtest 6m", callback_data="bt:6")],
-        [InlineKeyboardButton("Start Paper", callback_data="paper"),
-         InlineKeyboardButton("Start Live", callback_data="live")],
-        [InlineKeyboardButton("Stop", callback_data="stop")]
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🚀 Dhan Algo Bot is live and running!\n\n"
+        "Available commands:\n"
+        "/balance - Check account balance\n"
+        "/positions - View open positions\n"
+        "/orders - View recent orders\n"
+        "/buy <symbol> <qty> - Place a buy order\n"
+        "/sell <symbol> <qty> - Place a sell order\n"
+        "/help - Show this help menu"
+    )
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "ℹ️ Available commands:\n"
+        "/balance - Check account balance\n"
+        "/positions - View open positions\n"
+        "/orders - View recent orders\n"
+        "/buy <symbol> <qty> - Place a buy order\n"
+        "/sell <symbol> <qty> - Place a sell order"
+    )
+
+async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # TODO: Replace this with actual Dhan API call
+    balance = 100000.00  # Dummy value
+    await update.message.reply_text(f"💰 Account Balance: ₹{balance:,.2f}")
+
+async def positions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # TODO: Replace with real positions from Dhan API
+    positions = [
+        {"symbol": "RELIANCE", "qty": 10, "avg_price": 2500},
+        {"symbol": "INFY", "qty": 5, "avg_price": 1500}
     ]
-    await update.message.reply_text("Dhan Manager", reply_markup=InlineKeyboardMarkup(kb))
+    if positions:
+        text = "📊 Open Positions:\n" + "\n".join(
+            [f"{p['symbol']} - {p['qty']} @ ₹{p['avg_price']}" for p in positions]
+        )
+    else:
+        text = "📊 No open positions."
+    await update.message.reply_text(text)
 
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(HELP)
+async def orders_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # TODO: Replace with real orders from Dhan API
+    orders = [
+        {"symbol": "TCS", "side": "BUY", "qty": 2, "status": "COMPLETED"},
+        {"symbol": "HDFC", "side": "SELL", "qty": 1, "status": "PENDING"}
+    ]
+    if orders:
+        text = "📜 Recent Orders:\n" + "\n".join(
+            [f"{o['side']} {o['symbol']} x{o['qty']} - {o['status']}" for o in orders]
+        )
+    else:
+        text = "📜 No recent orders."
+    await update.message.reply_text(text)
 
-async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Mode: {settings.RUN_MODE} | Chat: {settings.TELEGRAM_CHAT_ID}")
+async def buy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2:
+        await update.message.reply_text("Usage: /buy <symbol> <qty>")
+        return
+    symbol = context.args[0].upper()
+    qty = int(context.args[1])
+    # TODO: Place buy order via Dhan API
+    await update.message.reply_text(f"✅ Buy order placed: {symbol} x{qty}")
 
-async def backtest_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    months = int(context.args[0]) if context.args else 6
-    from ..backtester.engine import run_backtest
-    await update.message.reply_text(f"Running backtest for {months} months...")
-    await run_backtest(months, out_csv=f"bt_{months}m.csv")
-    await update.message.reply_document(open(f"bt_{months}m.csv","rb"))
-    await update.message.reply_document(open("backtest_monthly.csv","rb"))
-    await update.message.reply_document(open("backtest_summary.json","rb"))
+async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2:
+        await update.message.reply_text("Usage: /sell <symbol> <qty>")
+        return
+    symbol = context.args[0].upper()
+    qty = int(context.args[1])
+    # TODO: Place sell order via Dhan API
+    await update.message.reply_text(f"✅ Sell order placed: {symbol} x{qty}")
 
-async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    if q.data.startswith("bt:"):
-        months = int(q.data.split(":")[1])
-        await backtest_cmd(update, context.__class__(application=context.application, _chat_id_and_data=context._chat_id_and_data))
-    elif q.data=="paper":
-        await q.edit_message_text("Paper trading starting (run process `python -m simulator.paper_engine`)")
-    elif q.data=="live":
-        await q.edit_message_text("Live trading starting (run process `python -m live.trader`)")
-    elif q.data=="stop":
-        await q.edit_message_text("Stop requested (terminate running process on Railway).")
+# =============================
+# MAIN APPLICATION
+# =============================
 
-def run():
-    app = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("status", status))
-    app.add_handler(CommandHandler("backtest", backtest_cmd))
-    app.add_handler(CallbackQueryHandler(buttons))
+def run_bot():
+    if not TELEGRAM_TOKEN:
+        raise ValueError("❌ TELEGRAM_TOKEN not found in environment variables.")
+
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("balance", balance_command))
+    app.add_handler(CommandHandler("positions", positions_command))
+    app.add_handler(CommandHandler("orders", orders_command))
+    app.add_handler(CommandHandler("buy", buy_command))
+    app.add_handler(CommandHandler("sell", sell_command))
+
+    print("✅ Telegram bot polling started")
     app.run_polling()
 
 if __name__ == "__main__":
-    run()
+    run_bot()
